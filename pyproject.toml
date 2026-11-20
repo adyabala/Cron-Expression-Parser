@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cron-expression-parser"
+version = "0.1.0"
+description = "Expand a cron expression into the times each field will run."
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = []
+
+[project.scripts]
+cron-parser = "cron_parser.cli:main"
+
+[tool.setuptools]
+packages = ["cron_parser"]
