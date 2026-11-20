@@ -148,5 +148,88 @@ class ParseExpressionTests(unittest.TestCase):
             parse_expression("0 0 32 * * cmd")
 
 
+class EdgeCaseTests(unittest.TestCase):
+    """Boundaries, whitespace and malformed input that are easy to get wrong."""
+
+    def test_upper_boundary_of_every_field(self):
+        cases = [(MINUTE, "59"), (HOUR, "23"), (DAY_OF_MONTH, "31"),
+                 (MONTH, "12"), (DAY_OF_WEEK, "6")]
+        for spec, text in cases:
+            with self.subTest(field=spec.name):
+                self.assertEqual(parse_field(text, spec), [int(text)])
+
+    def test_lower_boundary_of_every_field(self):
+        cases = [(MINUTE, "0"), (HOUR, "0"), (DAY_OF_MONTH, "1"),
+                 (MONTH, "1"), (DAY_OF_WEEK, "0")]
+        for spec, text in cases:
+            with self.subTest(field=spec.name):
+                self.assertEqual(parse_field(text, spec), [int(text)])
+
+    def test_full_range_written_explicitly_equals_wildcard(self):
+        self.assertEqual(parse_field("0-59", MINUTE), parse_field("*", MINUTE))
+        self.assertEqual(parse_field("1-31", DAY_OF_MONTH), parse_field("*", DAY_OF_MONTH))
+
+    def test_step_of_one_equals_wildcard(self):
+        self.assertEqual(parse_field("*/1", HOUR), parse_field("*", HOUR))
+
+    def test_step_equal_to_range_width_hits_both_ends(self):
+        self.assertEqual(parse_field("0-59/59", MINUTE), [0, 59])
+
+    def test_step_from_last_value(self):
+        self.assertEqual(parse_field("59/10", MINUTE), [59])
+        self.assertEqual(parse_field("6/2", DAY_OF_WEEK), [6])
+
+    def test_day_of_week_steps(self):
+        self.assertEqual(parse_field("*/2", DAY_OF_WEEK), [0, 2, 4, 6])
+        self.assertEqual(parse_field("0-7/7", DAY_OF_WEEK), [0])
+
+    def test_leading_zeros_are_accepted(self):
+        self.assertEqual(parse_field("05", MINUTE), [5])
+        self.assertEqual(parse_field("00-02", HOUR), [0, 1, 2])
+        self.assertEqual(parse_field("*/05", MINUTE), [0, 5, 10, 15, 20, 25, 30,
+                                                       35, 40, 45, 50, 55])
+
+    def test_just_past_the_boundary_raises(self):
+        cases = [("0-60", MINUTE), ("23-24", HOUR), ("0-31", DAY_OF_MONTH),
+                 ("12-13", MONTH), ("0-8", DAY_OF_WEEK), ("60/5", MINUTE),
+                 ("8/1", DAY_OF_WEEK)]
+        for text, spec in cases:
+            with self.subTest(text=text, field=spec.name):
+                with self.assertRaises(CronParseError):
+                    parse_field(text, spec)
+
+    def test_alias_cannot_start_an_open_ended_step(self):
+        # 7 is Sunday, but "7/1" would run past the end of the 0-6 range.
+        with self.assertRaises(CronParseError):
+            parse_field("7/1", DAY_OF_WEEK)
+
+    def test_very_large_number_raises(self):
+        with self.assertRaises(CronParseError):
+            parse_field("9" * 30, MINUTE)
+
+    def test_more_malformed_syntax_raises(self):
+        for text in [
+            "--", "1-*", "*/-1", "1-5/0", "0x10", "1e2", "-", "/", ",",
+            "1 ,2", "\t", "*/1.5", "5-1/2",
+        ]:
+            with self.subTest(text=text):
+                with self.assertRaises(CronParseError):
+                    parse_field(text, MINUTE)
+
+    def test_newlines_and_tabs_separate_fields(self):
+        expr = parse_expression("0\t0\n* * *\t/bin/true\n")
+        self.assertEqual(expr.fields[0].values, (0,))
+        self.assertEqual(expr.fields[1].values, (0,))
+        self.assertEqual(expr.command, "/bin/true")
+
+    def test_command_keeps_internal_tabs(self):
+        expr = parse_expression("0 0 * * * printf 'a\tb'")
+        self.assertEqual(expr.command, "printf 'a\tb'")
+
+    def test_six_fields_treats_the_sixth_as_command(self):
+        expr = parse_expression("0 0 * * * 5 cmd")
+        self.assertEqual(expr.command, "5 cmd")
+
+
 if __name__ == "__main__":
     unittest.main()
