@@ -25,7 +25,10 @@ _NUMBER = re.compile(r"[0-9]+")
 
 @dataclass(frozen=True)
 class ExpandedField:
-    """A field spec together with the values it expands to."""
+    """A field spec together with the values it expands to.
+
+    ``values`` is sorted ascending and contains no duplicates.
+    """
 
     spec: FieldSpec
     values: Tuple[int, ...]
@@ -33,7 +36,11 @@ class ExpandedField:
 
 @dataclass(frozen=True)
 class CronExpression:
-    """A fully expanded cron expression."""
+    """A fully expanded cron expression.
+
+    ``fields`` are in the same order as the field specs used to parse it.
+    ``command`` is the rest of the line, with surrounding whitespace removed.
+    """
 
     fields: Tuple[ExpandedField, ...]
     command: str
@@ -46,6 +53,17 @@ def parse_expression(
 
     The command is everything after the last time field, kept as written
     (it may contain spaces).
+
+    Args:
+        text: The cron line, e.g. ``"*/15 0 1,15 * 1-5 /usr/bin/find"``.
+        field_specs: The time fields to expect, in order. Defaults to the
+            five standard cron fields.
+
+    Returns:
+        A :class:`CronExpression` with every field expanded.
+
+    Raises:
+        CronParseError: If the line has too few parts or any field is invalid.
     """
     if text is None:
         raise CronParseError("cron expression is empty")
@@ -65,7 +83,12 @@ def parse_expression(
 
 
 def parse_field(text: str, spec: FieldSpec) -> List[int]:
-    """Expand a single field (e.g. ``"1-10/2,15"``) into a sorted list."""
+    """Expand a single field (e.g. ``"1-10/2,15"``) into a sorted list.
+
+    Raises:
+        CronParseError: If the field is empty, malformed or out of range.
+            The message starts with the field name.
+    """
     if not text:
         raise CronParseError(f"{spec.name}: empty field")
     values = set()
@@ -121,6 +144,11 @@ def _parse_value(text: str, spec: FieldSpec, item: str) -> int:
 
 
 def _parse_number(text: str, spec: FieldSpec, item: str, what: str) -> int:
+    """Parse a non-negative decimal integer, without any range check.
+
+    ``what`` ("value" or "step") and ``item`` are only used in the error
+    message.
+    """
     if not _NUMBER.fullmatch(text):
         raise CronParseError(f"{spec.name}: invalid {what} {text!r} in {item!r}")
     return int(text)

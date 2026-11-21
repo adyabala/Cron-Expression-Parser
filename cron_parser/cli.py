@@ -27,10 +27,19 @@ Pass the whole expression as ONE quoted argument, for example:
 
 def main(
     argv: Optional[List[str]] = None,
-    stdout: TextIO = None,
-    stderr: TextIO = None,
+    stdout: Optional[TextIO] = None,
+    stderr: Optional[TextIO] = None,
 ) -> int:
-    """Run the CLI and return a process exit code."""
+    """Run the CLI and return a process exit code.
+
+    Args:
+        argv: Arguments without the program name. Defaults to ``sys.argv[1:]``.
+        stdout: Stream for the table and help text. Defaults to ``sys.stdout``.
+        stderr: Stream for error messages. Defaults to ``sys.stderr``.
+
+    Returns:
+        ``EXIT_OK``, ``EXIT_INVALID_EXPRESSION`` or ``EXIT_USAGE``.
+    """
     args = sys.argv[1:] if argv is None else argv
     stdout = stdout or sys.stdout
     stderr = stderr or sys.stderr
