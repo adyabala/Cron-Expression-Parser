@@ -98,21 +98,42 @@ def parse_field(text: str, spec: FieldSpec) -> List[int]:
 
 
 def _parse_item(item: str, spec: FieldSpec, field_text: str) -> List[int]:
-    """Expand one comma-separated item: a value, range or step expression."""
+    """Expand one comma-separated item: a value, range or step expression.
+
+    An item is split into a base (``*``, ``a`` or ``a-b``) and an optional
+    ``/n`` step. New item syntax (for example ``L`` or ``#``) can be added
+    here without touching the list handling in :func:`parse_field`.
+    """
     if not item:
         raise CronParseError(f"{spec.name}: empty list item in {field_text!r}")
 
     base, sep, step_text = item.partition("/")
-    if sep:
-        step = _parse_number(step_text, spec, item, what="step")
-        if step == 0:
-            raise CronParseError(f"{spec.name}: step must be at least 1 in {item!r}")
-    else:
-        step = 1
+    has_step = bool(sep)
+    step = _parse_step(step_text, spec, item) if has_step else 1
+    start, end = _parse_bounds(base, spec, item, has_step)
+    return [spec.canonical(v) for v in range(start, end + 1, step)]
 
+
+def _parse_step(text: str, spec: FieldSpec, item: str) -> int:
+    """Parse the ``n`` in ``.../n``. It must be a whole number of at least 1."""
+    step = _parse_number(text, spec, item, what="step")
+    if step == 0:
+        raise CronParseError(f"{spec.name}: step must be at least 1 in {item!r}")
+    return step
+
+
+def _parse_bounds(
+    base: str, spec: FieldSpec, item: str, has_step: bool
+) -> Tuple[int, int]:
+    """Return the inclusive ``(start, end)`` that the base of an item covers.
+
+    ``*`` covers the whole field, ``a-b`` covers a to b, and a bare ``a``
+    covers just a, or a to the end of the field when followed by a step.
+    """
     if base == "*":
-        start, end = spec.min_value, spec.max_value
-    elif "-" in base:
+        return spec.min_value, spec.max_value
+
+    if "-" in base:
         start_text, _, end_text = base.partition("-")
         start = _parse_value(start_text, spec, item)
         end = _parse_value(end_text, spec, item)
@@ -120,16 +141,16 @@ def _parse_item(item: str, spec: FieldSpec, field_text: str) -> List[int]:
             raise CronParseError(
                 f"{spec.name}: range start is greater than end in {item!r}"
             )
-    else:
-        start = _parse_value(base, spec, item)
-        # "a/n" means "from a to the end of the range, every n".
-        end = spec.max_value if sep else start
-        if start > end:
-            raise CronParseError(
-                f"{spec.name}: start {start} is past the end of the range in {item!r}"
-            )
+        return start, end
 
-    return [spec.canonical(v) for v in range(start, end + 1, step)]
+    start = _parse_value(base, spec, item)
+    # "a/n" means "from a to the end of the range, every n".
+    end = spec.max_value if has_step else start
+    if start > end:
+        raise CronParseError(
+            f"{spec.name}: start {start} is past the end of the range in {item!r}"
+        )
+    return start, end
 
 
 def _parse_value(text: str, spec: FieldSpec, item: str) -> int:
