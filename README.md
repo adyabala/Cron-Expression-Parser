@@ -43,6 +43,15 @@ That's all. No virtualenv or `pip install` is needed to run or test it.
 argument. Without quotes your shell would split it into several arguments and
 expand `*` into file names; the program detects this and asks you to quote it.
 
+You can also pipe the expression in and pass `-` instead, which sidesteps
+shell quoting entirely:
+
+```bash
+echo "*/15 0 1,15 * 1-5 /usr/bin/find" | python3 -m cron_parser -
+```
+
+Other options: `--help` prints usage, `--version` prints the version.
+
 ### Optional: install as a `cron-parser` command
 
 ```bash
@@ -103,6 +112,44 @@ Values in each row are sorted ascending with duplicates removed.
 Everything after the fifth field is the command, kept exactly as written
 (including inner spaces), e.g. `"0 0 * * * /usr/bin/find /tmp -name x"`.
 
+### More examples
+
+Weekday office hours, every 30 minutes from 9:00 to 17:30:
+
+```
+$ python3 -m cron_parser "*/30 9-17 * * 1-5 /usr/local/bin/sync"
+minute        0 30
+hour          9 10 11 12 13 14 15 16 17
+day of month  1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31
+month         1 2 3 4 5 6 7 8 9 10 11 12
+day of week   1 2 3 4 5
+command       /usr/local/bin/sync
+```
+
+Quarterly at midnight on the 1st, with a command that has arguments:
+
+```
+$ python3 -m cron_parser "0 0 1 1/3 * /usr/bin/backup --full /data"
+minute        0
+hour          0
+day of month  1
+month         1 4 7 10
+day of week   0 1 2 3 4 5 6
+command       /usr/bin/backup --full /data
+```
+
+Weekends, with 7 written for Sunday (printed as 0):
+
+```
+$ python3 -m cron_parser "15 6 * * 6,7 /bin/weekend-report"
+minute        15
+hour          6
+day of month  1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31
+month         1 2 3 4 5 6 7 8 9 10 11 12
+day of week   0 6
+command       /bin/weekend-report
+```
+
 ---
 
 ## Approach and design
@@ -158,6 +205,26 @@ Key decisions:
   not apply cron's rule that day-of-month and day-of-week are OR-ed when both are
   restricted. Both are about *when* a job fires, not about field expansion.
 - The command is not validated or executed; it is printed as given.
+
+---
+
+## Troubleshooting
+
+- **`error: expected exactly 1 argument, got 6`**: the expression was not
+  quoted, so the shell split it. Wrap it in double quotes, or pipe it in and
+  pass `-`.
+- **The `*` turned into file names**: same cause. Unquoted `*` is expanded by
+  bash and zsh to the files in the current directory. Quote the expression.
+- **`zsh: no matches found: */15`**: zsh refuses to run an unquoted glob that
+  matches nothing. Quote the expression.
+- **`python3: command not found`** (or `python` on Windows opens the Store):
+  install Python 3.8+ as described in Quick start. On Windows use `py`.
+- **`No module named cron_parser`**: run the command from the repository root
+  (the folder that contains `cron_parser/`), or install it with `pip install .`.
+- **`error: <field>: ...`**: the expression itself is invalid. The message
+  names the field and the text that failed, e.g.
+  `error: hour: value 24 out of range 0-23 in '24'`. See
+  [Supported syntax](#supported-syntax).
 
 ---
 
